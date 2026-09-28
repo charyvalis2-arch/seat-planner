@@ -72,7 +72,10 @@ button:hover{filter:brightness(.96)}
   <div><label>列數（左右）</label><input id="cols" type="number" min="1" max="15" value="6"></div></div>
   <label>講台方向（學生視角）</label>
   <select id="pod"><option value="top">畫面上方</option><option value="bottom">畫面下方</option></select>
-  <div class="chk"><input type="checkbox" id="edit"><span>編輯模式：點座位可設為走道／停用</span></div>
+  <label>不使用的座位（排-列，排由講台起算、列由左起）</label>
+  <input id="dsx" placeholder="例：1-1, 1-6, 3排, 2列">
+  <div style="font-size:12px;color:var(--mut)">可寫「排-列」單一座位、「3排」整排、「2列」整列；也可用下方編輯模式直接點選。</div>
+  <div class="chk"><input type="checkbox" id="edit"><span>編輯模式：點座位可設為走道／停用（顯示排-列）</span></div>
  </div></details>
  <details open><summary>學生名單</summary><div>
   <select id="mode"><option value="range">座號範圍</option><option value="paste">貼上名單</option></select>
@@ -175,6 +178,7 @@ function valid(p,strict,flip){
 }
 function shuf(a){for(let i=a.length-1;i>0;i--){const j=Math.random()*(i+1)|0;[a[i],a[j]]=[a[j],a[i]]}return a}
 
+let soft=false;
 function unary(i,r,c,flip){
  const R=rows(),C=cols();
  if($('ron').checked)for(const x of rules){
@@ -188,7 +192,7 @@ function unary(i,r,c,flip){
   if(x.t=='front2'&&r>1)return false;
  }
  const g=S[i].g;
- if($('chk').checked&&g&&((r+c)%2==0)!=((g=='男')!=!!flip))return false;
+ if(!soft&&$('chk').checked&&g&&((r+c)%2==0)!=((g=='男')!=!!flip))return false;
  return true;
 }
 function pairOK(i,a,j,b){
@@ -229,8 +233,28 @@ function solve(pos0,free,strict,flip){
  }
  return rec(left0)?pos:null;
 }
+function gscore(pos){
+ const m={};pos.forEach((q,i)=>m[q[0]+','+q[1]]=i);let n=0;
+ pos.forEach((q,i)=>{const g=S[i].g;if(!g)return;for(const [dr,dc] of [[0,1],[1,0]]){const j=m[(q[0]+dr)+','+(q[1]+dc)];if(j!=null&&S[j].g==g)n++}});return n;
+}
+function improve(pos,free){
+ const fx=new Set(rules.filter(r=>r.t=='fixed').map(r=>idx(r.a))),K=q=>q[0]+','+q[1];
+ let cur=gscore(pos);
+ const cand=S.map((_,i)=>i).filter(i=>S[i].g&&!fx.has(i));
+ const okm=(x)=>unary(x,pos[x][0],pos[x][1],0)&&pos.every((q,k)=>k==x||!q||pairOK(x,pos[x],k,q));
+ for(let t=0;t<40000&&cur>0&&cand.length;t++){
+  const i=cand[Math.random()*cand.length|0],tgt=free[Math.random()*free.length|0];
+  const old=pos[i],occ=pos.findIndex(q=>q&&q[0]==tgt[0]&&q[1]==tgt[1]);
+  if(occ==i||fx.has(occ))continue;
+  const oldo=occ>=0?pos[occ]:null;
+  pos[i]=tgt;if(occ>=0)pos[occ]=old;
+  const n=gscore(pos);
+  if(n<=cur&&okm(i)&&(occ<0||okm(occ)))cur=n;else{pos[i]=old;if(occ>=0)pos[occ]=oldo}
+ }
+ return cur;
+}
 function go(){
- parse();ro=null;
+ parse();parseDis();ro=null;soft=false;let softMsg='';
  if(!S.length){msg('請先設定學生名單',1);return}
  const R=rows(),C=cols(),free=[];
  for(let r=0;r<R;r++)for(let c=0;c<C;c++)if(!dis.has(r+','+c))free.push([r,c]);
@@ -247,6 +271,13 @@ function go(){
  outer:for(const strict of [true,false])for(const fl of flips)for(let k=0;k<10;k++){
   ok=solve(pos,free,strict&&!!prev&&$('norep').checked,fl);if(ok)break outer;
  }
+  if(!ok&&$('chk').checked){
+  soft=true;
+  for(let k=0;k<10&&!ok;k++)ok=solve(pos,free,false,0);
+  if(ok){const sc=improve(ok,free);softMsg=sc?`（男女人數或座位無法完全交錯，已盡量交錯，仍有 ${sc} 組相鄰同性）`:'（已用梅花座排出）'}
+  soft=false;
+ }
+ if($('chk').checked&&!S.some(s=>s.g))softMsg='（提醒：名單沒有標男／女，梅花座未生效，請用「貼上名單」並在每行最後加男或女）';
  if(!ok){
   const bad=[];
   for(let i=0;i<S.length;i++)if(!pos[i]&&!free.some(([r,c])=>flips.some(f=>unary(i,r,c,f))))bad.push(lab(S[i]));
@@ -255,7 +286,7 @@ function go(){
 seats=Array.from({length:R},()=>Array(C).fill(null));
  ok.forEach((q,i)=>seats[q[0]][q[1]]=i);
  prev=ok;duty={};$('duty')&&($('duty').innerHTML='');
- save();render(true);msg('抽籤完成！可拖曳座位互換。');
+ save();render(true);msg('抽籤完成！可拖曳座位互換。'+softMsg);
 }
 function render(anim){
  const R=rows(),C=cols(),B=$('board');
@@ -270,16 +301,18 @@ function render(anim){
  let n=0;
  for(const r of ro_)for(const c of co){
   const k=r+','+c,i=seats[r][c],s=i!=null?S[i]:null;
-  if(dis.has(k))h+=`<div class="seat dis" data-r="${r}" data-c="${c}">走道</div>`;
-  else if(s)h+=`<div class="seat ${s.g=='男'?'M':s.g=='女'?'F':''} ${anim?'pop':''}" draggable="true" data-r="${r}" data-c="${c}" style="animation-delay:${(n++)*25}ms"><b>${s.n}</b>${s.name?`<span>${esc(s.name)}</span>`:''}${duty[i]?`<i>${esc(duty[i])}</i>`:''}</div>`;
+  const ed=$('edit').checked?`<em style="position:absolute;left:4px;bottom:1px;font-size:10px;color:var(--mut);font-style:normal">${r+1}-${c+1}</em>`:'';
+  if(dis.has(k))h+=`<div class="seat dis" data-r="${r}" data-c="${c}">不使用${ed}</div>`;
+  else if(s)h+=`<div class="seat ${s.g=='男'?'M':s.g=='女'?'F':''} ${anim?'pop':''}" draggable="true" data-r="${r}" data-c="${c}" style="animation-delay:${(n++)*25}ms"><b>${s.n}</b>${s.name?`<span>${esc(s.name)}</span>`:''}${duty[i]?`<i>${esc(duty[i])}</i>`:''}${ed}</div>`;
   else h+=`<div class="seat emp" data-r="${r}" data-c="${c}">空位</div>`;
+  if(false);
  }
  h+='</div>';if(!top)h+=pd;
  h+='<div id="duty">'+Object.keys(duty).map(i=>`<span class="tag">${esc(duty[i])}：${esc(lab(S[i]))}</span> `).join('')+'</div>';
  B.innerHTML=h;
  B.querySelectorAll('.seat').forEach(e=>{
   const r=+e.dataset.r,c=+e.dataset.c;
-  e.onclick=()=>{if(!$('edit').checked)return;const k=r+','+c;if(dis.has(k))dis.delete(k);else{dis.add(k);seats[r][c]=null}render()};
+  e.onclick=()=>{if(!$('edit').checked)return;const k=r+','+c;if(dis.has(k))dis.delete(k);else{dis.add(k);seats[r][c]=null}syncDis();render()};
   e.ondragstart=ev=>ev.dataTransfer.setData('text',r+','+c);
   e.ondragover=ev=>{ev.preventDefault();e.classList.add('over')};
   e.ondragleave=()=>e.classList.remove('over');
@@ -287,6 +320,15 @@ function render(anim){
    if(dis.has(a+','+b)||dis.has(r+','+c))return;
    [seats[a][b],seats[r][c]]=[seats[r][c],seats[a][b]];render()};
  });
+}
+function syncDis(){$('dsx').value=[...dis].map(k=>{const [r,c]=k.split(',').map(Number);return (r+1)+'-'+(c+1)}).sort((a,b)=>a.split('-')[0]-b.split('-')[0]||a.split('-')[1]-b.split('-')[1]).join(', ')}
+function parseDis(){
+ const R=rows(),C=cols(),v=$('dsx').value,d=new Set();
+ for(const m of v.matchAll(/(\d+)\s*[-－~]\s*(\d+)/g)){const r=m[1]-1,c=m[2]-1;if(r>=0&&c>=0&&r<R&&c<C)d.add(r+','+c)}
+ for(const m of v.matchAll(/(\d+)\s*排/g)){const r=m[1]-1;if(r>=0&&r<R)for(let c=0;c<C;c++)d.add(r+','+c)}
+ for(const m of v.matchAll(/(\d+)\s*列/g)){const c=m[1]-1;if(c>=0&&c<C)for(let r=0;r<R;r++)d.add(r+','+c)}
+ dis=d;
+ for(let r=0;r<seats.length;r++)for(let c=0;c<(seats[r]||[]).length;c++)if(dis.has(r+','+c))seats[r][c]=null;
 }
 const esc=s=>String(s).replace(/[&<>"]/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[m]));
 $('go').onclick=go;
@@ -305,16 +347,18 @@ $('lnk').onclick=async()=>{
  const u=location.href.split('#')[0]+'#'+d;
  try{await navigator.clipboard.writeText(u);msg('結果連結已複製（不含隱藏規則）')}catch(e){msg('無法存取剪貼簿',1)}
 };
+$('dsx').oninput=()=>{parseDis();render()};
+$('edit').onchange=()=>render();
 $('dgo').onclick=()=>{
  if(!S.length)return;const d=$('duties').value.split(/[,，\s]+/).filter(Boolean);
  duty={};shuf(S.map((_,i)=>i)).slice(0,d.length).forEach((i,j)=>duty[i]=d[j]);render();
 };
 $('mode').onchange=()=>{$('m1').hidden=$('mode').value!='range';$('m2').hidden=$('mode').value=='range';parse()};
 ['st','en','ex','list'].forEach(k=>$(k).oninput=parse);
-['rows','cols','pod','cls'].forEach(k=>$(k).onchange=()=>{if(k=='rows'||k=='cols'){seats=[];dis=new Set([...dis].filter(x=>{const [r,c]=x.split(',');return r<rows()&&c<cols()}))}render()});
-function save(){try{localStorage.setItem('seat',JSON.stringify({rules,f:['cls','rows','cols','pod','mode','st','en','ex','list','duties'].map(k=>[k,$(k).value])}))}catch(e){}}
+['rows','cols','pod','cls'].forEach(k=>$(k).onchange=()=>{if(k=='rows'||k=='cols'){seats=[];dis=new Set([...dis].filter(x=>{const [r,c]=x.split(',');return r<rows()&&c<cols()}));syncDis()}render()});
+function save(){try{localStorage.setItem('seat',JSON.stringify({rules,f:['cls','rows','cols','pod','mode','st','en','ex','list','duties','dsx'].map(k=>[k,$(k).value])}))}catch(e){}}
 $('reset').onclick=()=>{try{localStorage.removeItem('seat')}catch(e){}location.href=location.href.split('#')[0];location.reload()};
-try{const d=JSON.parse(localStorage.getItem('seat')||'null');if(d){rules=d.rules||[];d.f.forEach(([k,v])=>$(k).value=v);$('mode').onchange()}}catch(e){}
+try{const d=JSON.parse(localStorage.getItem('seat')||'null');if(d){rules=d.rules||[];d.f.forEach(([k,v])=>$(k).value=v);$('mode').onchange();parseDis()}}catch(e){}
 parse();rtui();
 if(location.hash.length>1){
  try{const d=JSON.parse(decodeURIComponent(escape(atob(location.hash.slice(1)))));
