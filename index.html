@@ -1,0 +1,270 @@
+<!DOCTYPE html>
+<html lang="zh-TW"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>隨機座位表</title>
+<style>
+:root{box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px);--bg:#f6f7f9;--card:#fff;--tx:#1d2330;--mut:#6b7385;--bd:#dde1e8;--ac:#2f6feb;--ac2:#e8f0ff;--seat:#fff;--dis:#eceef2}
+@media(prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#14171d;--card:#1d222b;--tx:#e8ebf1;--mut:#98a0b3;--bd:#2f3542;--ac:#6b9bff;--ac2:#223252;--seat:#232936;--dis:#181c23}}
+:root[data-theme="dark"]{--bg:#14171d;--card:#1d222b;--tx:#e8ebf1;--mut:#98a0b3;--bd:#2f3542;--ac:#6b9bff;--ac2:#223252;--seat:#232936;--dis:#181c23}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--tx);font-family:"Noto Sans TC","PingFang TC","Microsoft JhengHei",system-ui,sans-serif;line-height:1.5}
+.wrap{display:grid;grid-template-columns:minmax(0,1fr) 340px;gap:14px;padding:14px;max-width:1500px;margin:auto}
+@media(max-width:900px){.wrap{grid-template-columns:1fr}}
+.card{background:var(--card);border:1px solid var(--bd);border-radius:12px;padding:12px}
+h1{font-size:20px;margin:0 0 8px}
+details{border:1px solid var(--bd);border-radius:10px;margin-bottom:8px;background:var(--card)}
+summary{padding:9px 12px;font-weight:600;cursor:pointer}
+details>div{padding:0 12px 12px}
+label{display:block;font-size:13px;color:var(--mut);margin:8px 0 3px}
+input,select,textarea,button{font:inherit;color:var(--tx);background:var(--card);border:1px solid var(--bd);border-radius:8px;padding:6px 9px}
+input,select,textarea{width:100%}
+textarea{min-height:110px;resize:vertical}
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.row>*{flex:1;min-width:70px}
+button{cursor:pointer;flex:none}
+button.p{background:var(--ac);color:#fff;border-color:var(--ac);font-weight:600}
+button:hover{filter:brightness(.96)}
+.chk{display:flex;gap:6px;align-items:center;font-size:14px;color:var(--tx);margin:6px 0}
+.chk input{width:auto}
+.tool{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px}
+.tool .p{padding:9px 18px;font-size:16px}
+#msg{font-size:14px;color:var(--mut);min-height:22px;margin:2px 0 8px}
+#msg.err{color:#d33}
+#board{background:var(--card);border-radius:12px;padding:12px}
+.title{text-align:center;font-size:22px;font-weight:700;margin-bottom:8px}
+.podium{margin:6px auto;width:40%;min-width:120px;text-align:center;background:var(--ac2);color:var(--ac);border-radius:8px;padding:5px;font-weight:700}
+.grid{display:grid;gap:8px;margin:8px 0}
+.seat{min-height:64px;border:1.5px solid var(--bd);border-radius:10px;background:var(--seat);display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:4px;position:relative;overflow:hidden;user-select:none}
+.seat b{font-size:20px;line-height:1.1}
+.seat span{font-size:14px;color:var(--mut)}
+.seat.dis{background:var(--dis);border-style:dashed;opacity:.55}
+.seat.emp{border-style:dotted;color:var(--mut)}
+.seat.M{border-color:#4a90e2}.seat.F{border-color:#e2679a}
+.seat.pop{animation:pop .35s both}
+.seat.over{outline:3px solid var(--ac)}
+.seat i{position:absolute;top:2px;right:4px;font-size:11px;font-style:normal;background:var(--ac);color:#fff;border-radius:6px;padding:0 5px}
+@keyframes pop{from{transform:scale(.6);opacity:0}to{transform:none;opacity:1}}
+.rl{display:flex;gap:6px;flex-wrap:wrap;margin-top:6px}
+.tag{font-size:13px;background:var(--ac2);color:var(--ac);border-radius:14px;padding:2px 10px}
+.tag u{cursor:pointer;margin-left:6px;text-decoration:none;color:#d33}
+#duty{margin-top:10px;text-align:center}
+:fullscreen #board{overflow:auto;height:100%}
+@media print{.wrap{display:block;padding:0}.side,.tool,#msg{display:none}#board{border:0;padding:0}body{background:#fff;color:#000}.seat{background:#fff;color:#000;border-color:#888}}
+</style></head><body>
+<div class="wrap">
+<main>
+ <div class="tool">
+  <button class="p" id="go">🎲 開始抽座位</button>
+  <button id="view">👩‍🏫 教師視角</button>
+  <button id="fs">全螢幕</button>
+  <button id="prt">列印 / 存 PDF</button>
+  <button id="cp">複製表格</button>
+  <button id="lnk">複製結果連結</button>
+ </div>
+ <div id="msg">設定好名單後，按「開始抽座位」。抽完可直接拖曳座位互換。</div>
+ <div id="board"></div>
+</main>
+<aside class="side">
+ <details open><summary>教室設定</summary><div>
+  <label>班級名稱</label><input id="cls" value="三年一班">
+  <div class="row"><div><label>排數（前後）</label><input id="rows" type="number" min="1" max="15" value="6"></div>
+  <div><label>列數（左右）</label><input id="cols" type="number" min="1" max="15" value="6"></div></div>
+  <label>講台方向（學生視角）</label>
+  <select id="pod"><option value="top">畫面上方</option><option value="bottom">畫面下方</option></select>
+  <div class="chk"><input type="checkbox" id="edit"><span>編輯模式：點座位可設為走道／停用</span></div>
+ </div></details>
+ <details open><summary>學生名單</summary><div>
+  <select id="mode"><option value="range">座號範圍</option><option value="paste">貼上名單</option></select>
+  <div id="m1"><div class="row"><div><label>開始座號</label><input id="st" type="number" value="1"></div><div><label>結束座號</label><input id="en" type="number" value="36"></div></div>
+  <label>排除座號（逗號或空格）</label><input id="ex"></div>
+  <div id="m2" hidden><label>每行「座號 姓名 男/女」，座號、性別可省略</label><textarea id="list" placeholder="1 王小明 男&#10;2 李小華 女"></textarea></div>
+  <div id="cnt" class="tag" style="display:inline-block;margin-top:8px"></div>
+ </div></details>
+ <details><summary>隱藏規則</summary><div>
+  <div class="chk"><input type="checkbox" id="ron" checked><span>啟用隱藏規則（規則不顯示在展示畫面）</span></div>
+  <select id="rt"><option value="apart">兩人不能相鄰</option><option value="near">兩人必須相鄰</option><option value="nocorner">不能坐角落</option><option value="nolast">不能坐最後一排</option><option value="first">指定坐在第一排</option><option value="last">指定坐在最後一排</option><option value="front2">必須坐前兩排</option><option value="fixed">指定特定座位</option><option value="front">必須坐前 N 排</option><option value="back">必須坐後 N 排</option><option value="checker">全班使用梅花座</option></select>
+  <div class="row"><select id="sa"></select><select id="sb"></select></div>
+  <div class="row"><input id="n1" type="number" min="1" placeholder="排"><input id="n2" type="number" min="1" placeholder="列"></div>
+  <div class="chk" id="diagw"><input type="checkbox" id="diag" checked><span>包含斜角相鄰</span></div>
+  <div id="rhint" style="font-size:12px;color:var(--mut)"></div>
+  <button id="radd" style="margin-top:6px;width:100%" class="p">加入規則（<span id="rc">0</span> / 30）</button>
+  <div class="rl" id="rlist"></div>
+  <div class="chk"><input type="checkbox" id="chk"><span>梅花座（男女交錯，需標性別）</span></div>
+  <div class="chk"><input type="checkbox" id="norep" checked><span>盡量不與上次同座位</span></div>
+ </div></details>
+ <details><summary>股長與小老師</summary><div>
+  <label>職務（逗號分隔）</label><input id="duties" value="股長,副股長,小老師">
+  <button id="dgo" style="margin-top:6px">抽職務</button>
+ </div></details>
+ <button id="reset" style="width:100%">重設所有設定</button>
+</aside>
+</div>
+<script>
+const $=id=>document.getElementById(id);
+let S=[],rules=[],dis=new Set(),seats=[],prev=null,duty={},teacher=false,ro=null;
+const rows=()=>Math.max(1,+$('rows').value||1),cols=()=>Math.max(1,+$('cols').value||1);
+const lab=s=>s.n+(s.name?' '+s.name:'');
+function parse(){
+ if($('mode').value=='range'){
+  const ex=new Set(($('ex').value.match(/\d+/g)||[]).map(Number));S=[];
+  for(let n=+$('st').value;n<=+$('en').value&&S.length<300;n++)if(!ex.has(n))S.push({n,name:'',g:''});
+ }else{
+  S=[];$('list').value.split('\n').forEach((l,k)=>{
+   let t=l.trim().split(/[\s,，\t]+/).filter(Boolean);if(!t.length)return;
+   let g='';if(/^[男女]$/.test(t[t.length-1])&&t.length>1)g=t.pop();
+   let n=k+1,name='';
+   if(/^\d+$/.test(t[0])){n=+t.shift();name=t.join(' ')}else name=t.join(' ');
+   S.push({n,name,g});
+  });
+ }
+ $('cnt').textContent='學生人數 '+S.length+' 人';
+ rules=rules.filter(r=>idx(r.a)>=0&&(r.b==null||idx(r.b)>=0));
+ const o=S.map(s=>`<option value="${s.n}">${lab(s)}</option>`).join('');
+ [$('sa'),$('sb')].forEach(e=>{const v=e.value;e.innerHTML=o;if(v)e.value=v});
+ rl();
+}
+const idx=n=>S.findIndex(s=>s.n==n);
+function ruleText(r){
+ const A=lab(S[idx(r.a)]),B=r.b!=null&&S[idx(r.b)]?lab(S[idx(r.b)]):'';
+ return {nocorner:`${A} 不坐角落`,nolast:`${A} 不坐最後一排`,first:`${A} 坐第一排`,last:`${A} 坐最後一排`,front2:`${A} 坐前兩排`,apart:`${A} ✕ ${B} 不相鄰${r.d?'（含斜角）':''}`,near:`${A} ＋ ${B} 相鄰${r.d?'（含斜角）':''}`,fixed:`${A} 固定：第${r.n1}排第${r.n2}列`,front:`${A} 坐前${r.n1}排內`,back:`${A} 坐後${r.n1}排內`,}[r.t];
+}
+function rl(){
+ $('rc').textContent=rules.length;
+ $('rlist').innerHTML=rules.map((r,i)=>`<span class="tag">${ruleText(r)}<u data-i="${i}">✕</u></span>`).join('');
+ $('rlist').querySelectorAll('u').forEach(u=>u.onclick=()=>{rules.splice(+u.dataset.i,1);rl()});
+}
+function rtui(){
+ const t=$('rt').value,two=t=='apart'||t=='near',num=t=='fixed'||t=='front'||t=='back';
+ $('sa').style.display=t=='checker'?'none':'';$('sb').style.display=two?'':'none';$('n1').style.display=num?'':'none';$('n2').style.display=t=='fixed'?'':'none';$('diagw').style.display=two?'':'none';
+ $('n1').placeholder=t=='fixed'?'第幾排（1=最前）':'幾排內';$('n2').placeholder='第幾列（左起，學生視角）';
+ $('rhint').textContent=t=='checker'?'需在名單中標註每位學生的性別（男/女）。':'排數由講台方向起算，第1排最靠講台。';
+}
+$('rt').onchange=rtui;
+$('radd').onclick=()=>{
+ const t=$('rt').value,r={t,a:+$('sa').value};
+ if(t=='checker'){$('chk').checked=true;msg('已啟用：全班梅花座');return}
+ if(!S.length)return;
+ if(rules.length>=30){msg('規則已達上限 30 條',1);return}
+ if(t=='apart'||t=='near'){r.d=$('diag').checked;r.b=+$('sb').value;if(r.a==r.b){msg('請選兩位不同的學生',1);return}}
+ else if(t=='fixed'||t=='front'||t=='back'){r.n1=+$('n1').value;if(!r.n1){msg('請輸入排數',1);return}if(t=='fixed'){r.n2=+$('n2').value;if(!r.n2){msg('請輸入列數',1);return}}}
+ rules.push(r);rl();msg('已新增規則');
+};
+function msg(t,e){$('msg').textContent=t;$('msg').className=e?'err':''}
+const cheb=(p,q)=>Math.max(Math.abs(p[0]-q[0]),Math.abs(p[1]-q[1]));
+function valid(p,strict,flip){
+ if($('ron').checked)for(const r of rules){
+  const i=idx(r.a),a=p[i];
+  if(r.t=='front'&&a[0]>=r.n1)return false;
+  if(r.t=='back'&&a[0]<rows()-r.n1)return false;
+  const q=r.b!=null?p[idx(r.b)]:null,d=q?(r.d?cheb(a,q):Math.abs(a[0]-q[0])+Math.abs(a[1]-q[1])):0;
+  if(r.t=='apart'&&d<2)return false;
+  if(r.t=='near'&&d!=1)return false;
+  if(r.t=='nocorner'&&(a[0]==0||a[0]==rows()-1)&&(a[1]==0||a[1]==cols()-1))return false;
+  if(r.t=='nolast'&&a[0]==rows()-1)return false;
+  if(r.t=='first'&&a[0]!=0)return false;
+  if(r.t=='last'&&a[0]!=rows()-1)return false;
+  if(r.t=='front2'&&a[0]>1)return false;
+ }
+ if($('chk').checked)for(let i=0;i<S.length;i++){
+  const g=S[i].g;if(!g)continue;
+  if(((p[i][0]+p[i][1])%2==0)!=((g=='男')!=flip))return false;
+ }
+ if(strict&&$('norep').checked&&prev)for(let i=0;i<S.length;i++)if(prev[i]&&prev[i][0]==p[i][0]&&prev[i][1]==p[i][1])return false;
+ return true;
+}
+function shuf(a){for(let i=a.length-1;i>0;i--){const j=Math.random()*(i+1)|0;[a[i],a[j]]=[a[j],a[i]]}return a}
+function go(){
+ parse();ro=null;
+ if(!S.length){msg('請先設定學生名單',1);return}
+ const R=rows(),C=cols(),free=[];
+ for(let r=0;r<R;r++)for(let c=0;c<C;c++)if(!dis.has(r+','+c))free.push([r,c]);
+ if(S.length>free.length){msg(`座位不足：${S.length} 位學生，只有 ${free.length} 個可用座位`,1);return}
+ const pos=Array(S.length),used=new Set();
+ if($('ron').checked)for(const f of rules.filter(x=>x.t=='fixed')){
+  const r=f.n1-1,c=f.n2-1,k=r+','+c;
+  if(r<0||c<0||r>=R||c>=C||dis.has(k)||used.has(k)||pos[idx(f.a)]){msg('固定座位衝突或不在教室範圍內',1);return}
+  used.add(k);pos[idx(f.a)]=[r,c];
+ }
+ const rest=S.map((_,i)=>i).filter(i=>!pos[i]),sf=free.filter(([r,c])=>!used.has(r+','+c));
+ let ok=null;
+ for(let t=0;t<6000&&!ok;t++){
+  shuf(sf);const p=pos.slice();rest.forEach((i,j)=>p[i]=sf[j]);
+  if(valid(p,t<3000,t%2))ok=p;
+ }
+ if(!ok){msg('找不到符合所有規則的排法，請放寬規則',1);return}
+ seats=Array.from({length:R},()=>Array(C).fill(null));
+ ok.forEach((q,i)=>seats[q[0]][q[1]]=i);
+ prev=ok;duty={};$('duty')&&($('duty').innerHTML='');
+ save();render(true);msg('抽籤完成！可拖曳座位互換。');
+}
+function render(anim){
+ const R=rows(),C=cols(),B=$('board');
+ if(seats.length!=R||seats[0].length!=C)seats=Array.from({length:R},()=>Array(C).fill(null));
+ const top=($('pod').value=='top')!==teacher;
+ const ro_=[...Array(R).keys()];if(!top)ro_.reverse();
+ const co=[...Array(C).keys()];if(teacher)co.reverse();
+ let h=`<div class="title">${esc($('cls').value)} 座位表${teacher?'（教師視角）':''}</div>`;
+ const pd='<div class="podium">講　台</div>';
+ if(top)h+=pd;
+ h+=`<div class="grid" style="grid-template-columns:repeat(${C},1fr)">`;
+ let n=0;
+ for(const r of ro_)for(const c of co){
+  const k=r+','+c,i=seats[r][c],s=i!=null?S[i]:null;
+  if(dis.has(k))h+=`<div class="seat dis" data-r="${r}" data-c="${c}">走道</div>`;
+  else if(s)h+=`<div class="seat ${s.g=='男'?'M':s.g=='女'?'F':''} ${anim?'pop':''}" draggable="true" data-r="${r}" data-c="${c}" style="animation-delay:${(n++)*25}ms"><b>${s.n}</b>${s.name?`<span>${esc(s.name)}</span>`:''}${duty[i]?`<i>${esc(duty[i])}</i>`:''}</div>`;
+  else h+=`<div class="seat emp" data-r="${r}" data-c="${c}">空位</div>`;
+ }
+ h+='</div>';if(!top)h+=pd;
+ h+='<div id="duty">'+Object.keys(duty).map(i=>`<span class="tag">${esc(duty[i])}：${esc(lab(S[i]))}</span> `).join('')+'</div>';
+ B.innerHTML=h;
+ B.querySelectorAll('.seat').forEach(e=>{
+  const r=+e.dataset.r,c=+e.dataset.c;
+  e.onclick=()=>{if(!$('edit').checked)return;const k=r+','+c;if(dis.has(k))dis.delete(k);else{dis.add(k);seats[r][c]=null}render()};
+  e.ondragstart=ev=>ev.dataTransfer.setData('text',r+','+c);
+  e.ondragover=ev=>{ev.preventDefault();e.classList.add('over')};
+  e.ondragleave=()=>e.classList.remove('over');
+  e.ondrop=ev=>{ev.preventDefault();const [a,b]=ev.dataTransfer.getData('text').split(',').map(Number);
+   if(dis.has(a+','+b)||dis.has(r+','+c))return;
+   [seats[a][b],seats[r][c]]=[seats[r][c],seats[a][b]];render()};
+ });
+}
+const esc=s=>String(s).replace(/[&<>"]/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[m]));
+$('go').onclick=go;
+$('view').onclick=()=>{teacher=!teacher;$('view').textContent=teacher?'🧑‍🎓 學生視角':'👩‍🏫 教師視角';render()};
+$('fs').onclick=()=>{try{$('board').requestFullscreen()}catch(e){msg('此瀏覽器不支援全螢幕',1)}};
+$('prt').onclick=()=>window.print();
+$('cp').onclick=async()=>{
+ const R=rows(),C=cols();let t='';
+ for(let r=0;r<R;r++){const a=[];for(let c=0;c<C;c++){const i=seats[r]&&seats[r][c];a.push(dis.has(r+','+c)?'':i!=null?lab(S[i]):'')}t+=a.join('\t')+'\n'}
+ try{await navigator.clipboard.writeText(t);msg('已複製，可貼到 Excel／Word（第一列為最靠講台）')}catch(e){msg('無法存取剪貼簿',1)}
+};
+$('lnk').onclick=async()=>{
+ const R=rows(),C=cols(),g=[];
+ for(let r=0;r<R;r++){g.push([]);for(let c=0;c<C;c++){const i=seats[r]&&seats[r][c];g[r].push(dis.has(r+','+c)?'#':i!=null?lab(S[i]):'')}}
+ const d=btoa(unescape(encodeURIComponent(JSON.stringify({t:$('cls').value,p:$('pod').value,g}))));
+ const u=location.href.split('#')[0]+'#'+d;
+ try{await navigator.clipboard.writeText(u);msg('結果連結已複製（不含隱藏規則）')}catch(e){msg('無法存取剪貼簿',1)}
+};
+$('dgo').onclick=()=>{
+ if(!S.length)return;const d=$('duties').value.split(/[,，\s]+/).filter(Boolean);
+ duty={};shuf(S.map((_,i)=>i)).slice(0,d.length).forEach((i,j)=>duty[i]=d[j]);render();
+};
+$('mode').onchange=()=>{$('m1').hidden=$('mode').value!='range';$('m2').hidden=$('mode').value=='range';parse()};
+['st','en','ex','list'].forEach(k=>$(k).oninput=parse);
+['rows','cols','pod','cls'].forEach(k=>$(k).onchange=()=>{if(k=='rows'||k=='cols'){seats=[];dis=new Set([...dis].filter(x=>{const [r,c]=x.split(',');return r<rows()&&c<cols()}))}render()});
+function save(){try{localStorage.setItem('seat',JSON.stringify({rules,f:['cls','rows','cols','pod','mode','st','en','ex','list','duties'].map(k=>[k,$(k).value])}))}catch(e){}}
+$('reset').onclick=()=>{try{localStorage.removeItem('seat')}catch(e){}location.href=location.href.split('#')[0];location.reload()};
+try{const d=JSON.parse(localStorage.getItem('seat')||'null');if(d){rules=d.rules||[];d.f.forEach(([k,v])=>$(k).value=v);$('mode').onchange()}}catch(e){}
+parse();rtui();
+if(location.hash.length>1){
+ try{const d=JSON.parse(decodeURIComponent(escape(atob(location.hash.slice(1)))));
+  $('cls').value=d.t;$('pod').value=d.p;$('rows').value=d.g.length;$('cols').value=d.g[0].length;
+  S=[];seats=d.g.map((row,r)=>row.map((v,c)=>{if(v=='#'){dis.add(r+','+c);return null}if(!v)return null;
+   const m=v.match(/^(\d+)\s*(.*)$/);S.push({n:m?+m[1]:S.length+1,name:m?m[2]:v,g:''});return S.length-1}));
+  document.querySelector('.side').style.display='none';document.querySelector('.wrap').style.gridTemplateColumns='1fr';
+  $('go').style.display='none';$('lnk').style.display='none';msg('這是分享的座位結果');
+ }catch(e){}
+}
+render();
+</script></body></html>
