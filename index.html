@@ -60,7 +60,8 @@ button:hover{filter:brightness(.96)}
   <button id="fs">全螢幕</button>
   <button id="prt">列印 / 存 PDF</button>
   <button id="cp">複製表格</button>
-  <button id="lnk">複製結果連結</button>
+  <button id="lnk">複製結果連結（唯讀）</button>
+  <button id="cfglnk" class="p">📋 複製設定連結（給 iPad 抽籤）</button>
  </div>
  <div id="msg">設定好名單後，按「開始抽座位」。抽完可直接拖曳座位互換。</div>
  <div id="board"></div>
@@ -340,6 +341,14 @@ $('cp').onclick=async()=>{
  for(let r=0;r<R;r++){const a=[];for(let c=0;c<C;c++){const i=seats[r]&&seats[r][c];a.push(dis.has(r+','+c)?'':i!=null?lab(S[i]):'')}t+=a.join('\t')+'\n'}
  try{await navigator.clipboard.writeText(t);msg('已複製，可貼到 Excel／Word（第一列為最靠講台）')}catch(e){msg('無法存取剪貼簿',1)}
 };
+$('cfglnk').onclick=async()=>{
+ const cfg={f:['cls','rows','cols','pod','mode','st','en','ex','list','duties','dsx'].map(k=>[k,$(k).value]),
+  ck:['chk','norep','ron'].map(k=>[k,$(k).checked]),rules};
+ const d='c'+btoa(unescape(encodeURIComponent(JSON.stringify(cfg))));
+ const u=location.href.split('#')[0]+'#'+d;
+ try{await navigator.clipboard.writeText(u);msg('設定連結已複製！在 iPad 開啟此連結即可直接按「開始抽座位」。')}
+ catch(e){msg('無法存取剪貼簿，請手動複製網址列的連結',1)}
+};
 $('lnk').onclick=async()=>{
  const R=rows(),C=cols(),g=[];
  for(let r=0;r<R;r++){g.push([]);for(let c=0;c<C;c++){const i=seats[r]&&seats[r][c];g[r].push(dis.has(r+','+c)?'#':i!=null?lab(S[i]):'')}}
@@ -360,7 +369,17 @@ function save(){try{localStorage.setItem('seat',JSON.stringify({rules,f:['cls','
 $('reset').onclick=()=>{try{localStorage.removeItem('seat')}catch(e){}location.href=location.href.split('#')[0];location.reload()};
 try{const d=JSON.parse(localStorage.getItem('seat')||'null');if(d){rules=d.rules||[];d.f.forEach(([k,v])=>$(k).value=v);$('mode').onchange();parseDis()}}catch(e){}
 parse();rtui();
-if(location.hash.length>1){
+if(location.hash.slice(1,2)=='c'){
+ try{
+  const cfg=JSON.parse(decodeURIComponent(escape(atob(location.hash.slice(2)))));
+  cfg.f.forEach(([k,v])=>$(k).value=v);
+  cfg.ck.forEach(([k,v])=>$(k).checked=v);
+  rules=cfg.rules||[];
+  $('mode').onchange();parseDis();
+  history.replaceState(null,'',location.pathname+location.search);
+  msg('設定已載入，按「開始抽座位」即可抽籤。');
+ }catch(e){msg('設定連結解析失敗',1)}
+}else if(location.hash.length>1){
  try{const d=JSON.parse(decodeURIComponent(escape(atob(location.hash.slice(1)))));
   $('cls').value=d.t;$('pod').value=d.p;$('rows').value=d.g.length;$('cols').value=d.g[0].length;
   S=[];seats=d.g.map((row,r)=>row.map((v,c)=>{if(v=='#'){dis.add(r+','+c);return null}if(!v)return null;
